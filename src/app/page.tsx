@@ -2,16 +2,14 @@
 
 import { Button, HStack, VStack, Text, Box, Container, Flex } from '@chakra-ui/react';
 
-import Header from '@/layout/Header';
-import Footer from '@/layout/Footer';
-
-import styles from './page.module.css';
+import Header from '../layout/Header';
+import Footer from '../layout/Footer';
 
 export default function Home() {
     return (
-        <div className={styles.page}>
+        <div style={{ fontFamily: 'var(--font-geist-sans)' }}>
             <Header />
-            <main className={styles.main}>
+            <main style={{ minHeight: '100vh', padding: '20px', backgroundColor: '#f7f9fb' }}>
                 <Box
                     bg={{ base: 'rgba(255, 255, 255, 0.8)', _dark: 'rgba(0, 0, 0, 0.8)' }}
                     display="flex"
@@ -24,14 +22,14 @@ export default function Home() {
                             <Text fontSize="2xl" fontWeight="bold" textAlign="center">
                                 Canvas Drawing
                             </Text>
-                            
+
                             <canvas
                                 ref={(canvas) => {
                                     if (canvas) {
                                         // Set canvas size
                                         canvas.width = 800;
                                         canvas.height = 600;
-                                        
+
                                         // Store canvas reference for drawing functions
                                         (window as any).drawingCanvas = canvas;
                                     }
@@ -41,12 +39,12 @@ export default function Home() {
                                     borderRadius: '8px',
                                     backgroundColor: 'white',
                                     maxWidth: '100%',
-                                    height: 'auto'
+                                    height: 'auto',
                                 }}
                                 width={800}
                                 height={600}
                             />
-                            
+
                             <Button
                                 colorScheme="blue"
                                 size="lg"
@@ -58,15 +56,24 @@ export default function Home() {
                                             // Generate random position for the square
                                             const x = Math.random() * (canvas.width - 100);
                                             const y = Math.random() * (canvas.height - 100);
-                                            
+
                                             // Generate random color
-                                            const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F'];
+                                            const colors = [
+                                                '#FF6B6B',
+                                                '#4ECDC4',
+                                                '#45B7D1',
+                                                '#96CEB4',
+                                                '#FFEAA7',
+                                                '#DDA0DD',
+                                                '#98D8C8',
+                                                '#F7DC6F',
+                                            ];
                                             const color = colors[Math.floor(Math.random() * colors.length)];
-                                            
+
                                             // Draw square
                                             ctx.fillStyle = color;
                                             ctx.fillRect(x, y, 100, 100);
-                                            
+
                                             // Add border
                                             ctx.strokeStyle = '#2D3748';
                                             ctx.lineWidth = 2;
@@ -77,7 +84,7 @@ export default function Home() {
                             >
                                 Draw Square
                             </Button>
-                            
+
                             <Button
                                 colorScheme="red"
                                 variant="outline"
