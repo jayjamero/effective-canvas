@@ -62,6 +62,7 @@ describe('Home Page Canvas Functionality', () => {
 
         expect(screen.getByText('Canvas Drawing - Drag the squares around!')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /draw square/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /delete mode/i })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /clear canvas/i })).toBeInTheDocument();
 
         // Check if canvas is rendered
@@ -313,6 +314,190 @@ describe('Home Page Canvas Functionality', () => {
             // Both squares should be redrawn, but only first one moved
             expect(mockFillRect).toHaveBeenCalledWith(150, 100, 100, 100); // First square moved
             expect(mockFillRect).toHaveBeenCalledWith(560, 400, 100, 100); // Second square unchanged
+        });
+    });
+
+    describe('Delete Functionality', () => {
+        it('toggles delete mode when Delete Mode button is clicked', () => {
+            render(<Home />);
+
+            const deleteModeButton = screen.getByRole('button', { name: /delete mode/i });
+
+            // Initially should be in normal mode
+            expect(screen.getByText('Canvas Drawing - Drag the squares around!')).toBeInTheDocument();
+            expect(deleteModeButton).toHaveTextContent('Delete Mode');
+
+            // Click to enter delete mode
+            fireEvent.click(deleteModeButton);
+
+            expect(screen.getByText('Canvas Drawing - Click squares to delete them!')).toBeInTheDocument();
+            expect(deleteModeButton).toHaveTextContent('Exit Delete Mode');
+
+            // Click to exit delete mode
+            fireEvent.click(deleteModeButton);
+
+            expect(screen.getByText('Canvas Drawing - Drag the squares around!')).toBeInTheDocument();
+            expect(deleteModeButton).toHaveTextContent('Delete Mode');
+        });
+
+        it('deletes a square when clicked in delete mode', () => {
+            render(<Home />);
+
+            const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+            const drawButton = screen.getByRole('button', { name: /draw square/i });
+            const deleteModeButton = screen.getByRole('button', { name: /delete mode/i });
+
+            // Draw a square at position (350, 250)
+            fireEvent.click(drawButton);
+            expect(mockFillRect).toHaveBeenCalledWith(350, 250, 100, 100);
+
+            // Enter delete mode
+            fireEvent.click(deleteModeButton);
+
+            jest.clearAllMocks();
+
+            // Click on the square to delete it
+            fireEvent.mouseDown(canvas, {
+                clientX: 400, // Inside the square
+                clientY: 300,
+            });
+
+            // Canvas should be cleared (square deleted)
+            expect(mockClearRect).toHaveBeenCalledWith(0, 0, 800, 600);
+            // No squares should be redrawn
+            expect(mockFillRect).not.toHaveBeenCalled();
+        });
+
+        it('does not allow dragging in delete mode', () => {
+            render(<Home />);
+
+            const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+            const drawButton = screen.getByRole('button', { name: /draw square/i });
+            const deleteModeButton = screen.getByRole('button', { name: /delete mode/i });
+
+            // Draw a square
+            fireEvent.click(drawButton);
+
+            // Enter delete mode
+            fireEvent.click(deleteModeButton);
+
+            jest.clearAllMocks();
+
+            // Try to start dragging
+            fireEvent.mouseDown(canvas, {
+                clientX: 400,
+                clientY: 300,
+            });
+
+            // Should not start dragging (cursor should not change to grabbing)
+            expect(canvas.style.cursor).not.toBe('grabbing');
+
+            // Move mouse - should not update square position
+            fireEvent.mouseMove(canvas, {
+                clientX: 500,
+                clientY: 400,
+            });
+
+            // Square should not be redrawn at new position
+            expect(mockFillRect).not.toHaveBeenCalledWith(450, 350, 100, 100);
+        });
+
+        it('shows crosshair cursor when hovering over square in delete mode', () => {
+            render(<Home />);
+
+            const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+            const drawButton = screen.getByRole('button', { name: /draw square/i });
+            const deleteModeButton = screen.getByRole('button', { name: /delete mode/i });
+
+            // Draw a square
+            fireEvent.click(drawButton);
+
+            // Enter delete mode
+            fireEvent.click(deleteModeButton);
+
+            // Hover over the square
+            fireEvent.mouseMove(canvas, {
+                clientX: 400, // Inside square
+                clientY: 300,
+            });
+
+            expect(canvas.style.cursor).toBe('crosshair');
+
+            // Move away from square
+            fireEvent.mouseMove(canvas, {
+                clientX: 100, // Outside square
+                clientY: 100,
+            });
+
+            expect(canvas.style.cursor).toBe('default');
+        });
+
+        it('deletes multiple squares independently', () => {
+            render(<Home />);
+
+            const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+            const drawButton = screen.getByRole('button', { name: /draw square/i });
+            const deleteModeButton = screen.getByRole('button', { name: /delete mode/i });
+
+            // Draw first square
+            mockDateNow.mockReturnValueOnce(1000);
+            fireEvent.click(drawButton);
+
+            // Draw second square at different position
+            mockMathRandom.mockReturnValue(0.8);
+            mockDateNow.mockReturnValueOnce(2000);
+            fireEvent.click(drawButton);
+
+            // Enter delete mode
+            fireEvent.click(deleteModeButton);
+
+            jest.clearAllMocks();
+
+            // Delete the first square (at position 350, 250)
+            fireEvent.mouseDown(canvas, {
+                clientX: 400, // Center of first square
+                clientY: 300,
+            });
+
+            // Only second square should be redrawn
+            expect(mockClearRect).toHaveBeenCalledWith(0, 0, 800, 600);
+            expect(mockFillRect).toHaveBeenCalledWith(560, 400, 100, 100); // Second square still there
+            expect(mockFillRect).toHaveBeenCalledTimes(1); // Only one square left
+        });
+
+        it('exits delete mode and returns to normal mode', () => {
+            render(<Home />);
+
+            const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+            const drawButton = screen.getByRole('button', { name: /draw square/i });
+            const deleteModeButton = screen.getByRole('button', { name: /delete mode/i });
+
+            // Draw a square
+            fireEvent.click(drawButton);
+
+            // Enter delete mode
+            fireEvent.click(deleteModeButton);
+
+            // Exit delete mode
+            fireEvent.click(deleteModeButton);
+
+            jest.clearAllMocks();
+
+            // Should be able to drag again
+            fireEvent.mouseDown(canvas, {
+                clientX: 400,
+                clientY: 300,
+            });
+
+            expect(canvas.style.cursor).toBe('grabbing');
+
+            // Should be able to move the square
+            fireEvent.mouseMove(canvas, {
+                clientX: 500,
+                clientY: 400,
+            });
+
+            expect(mockFillRect).toHaveBeenCalledWith(450, 350, 100, 100);
         });
     });
 });

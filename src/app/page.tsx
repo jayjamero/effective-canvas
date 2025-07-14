@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, VStack, Text, Box, Container } from '@chakra-ui/react';
+import { Button, VStack, Text, Box, Container, HStack, Stack } from '@chakra-ui/react';
 import { useState, useRef, useEffect } from 'react';
 
 import Header from '../layout/Header';
@@ -18,6 +18,7 @@ interface Square {
 export default function Home() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [squares, setSquares] = useState<Square[]>([]);
+    const [isDeleteMode, setIsDeleteMode] = useState(false);
     const [dragState, setDragState] = useState<{
         isDragging: boolean;
         squareId: string | null;
@@ -89,6 +90,12 @@ export default function Home() {
         const clickedSquare = findSquareAt(mousePos.x, mousePos.y);
 
         if (clickedSquare) {
+            if (isDeleteMode) {
+                // Delete the clicked square
+                deleteSquare(clickedSquare.id);
+                return;
+            }
+
             setDragState({
                 isDragging: true,
                 squareId: clickedSquare.id,
@@ -105,7 +112,7 @@ export default function Home() {
 
         const mousePos = getMousePos(canvas, e.nativeEvent);
 
-        if (dragState.isDragging && dragState.squareId) {
+        if (dragState.isDragging && dragState.squareId && !isDeleteMode) {
             // Update the position of the dragged square
             setSquares((prevSquares) =>
                 prevSquares.map((square) =>
@@ -119,9 +126,13 @@ export default function Home() {
                 )
             );
         } else {
-            // Change cursor based on whether mouse is over a square
+            // Change cursor based on whether mouse is over a square and current mode
             const hoveredSquare = findSquareAt(mousePos.x, mousePos.y);
-            canvas.style.cursor = hoveredSquare ? 'grab' : 'default';
+            if (hoveredSquare) {
+                canvas.style.cursor = isDeleteMode ? 'crosshair' : 'grab';
+            } else {
+                canvas.style.cursor = 'default';
+            }
         }
     };
 
@@ -162,6 +173,11 @@ export default function Home() {
         setSquares([]);
     };
 
+    // Function to delete a specific square
+    const deleteSquare = (squareId: string) => {
+        setSquares((prevSquares) => prevSquares.filter((square) => square.id !== squareId));
+    };
+
     // Effect to redraw canvas whenever squares change
     useEffect(() => {
         redrawCanvas();
@@ -179,9 +195,10 @@ export default function Home() {
                     margin={{ base: '0', md: '0' }}
                 >
                     <Container maxW="8xl">
-                        <VStack spacing={6} align="center">
+                        <Stack gap={6} align="center">
                             <Text fontSize="2xl" fontWeight="bold" textAlign="center">
-                                Canvas Drawing - Drag the squares around!
+                                Canvas Drawing -{' '}
+                                {isDeleteMode ? 'Click squares to delete them!' : 'Drag the squares around!'}
                             </Text>
 
                             <canvas
@@ -202,14 +219,25 @@ export default function Home() {
                                 height={600}
                             />
 
-                            <Button colorScheme="blue" size="lg" onClick={addSquare}>
-                                Draw Square
-                            </Button>
+                            <Stack direction="row" gap={4} flexWrap="wrap" justify="center">
+                                <Button colorScheme="blue" size="lg" onClick={addSquare}>
+                                    Draw Square
+                                </Button>
 
-                            <Button colorScheme="red" variant="outline" onClick={clearCanvas}>
-                                Clear Canvas
-                            </Button>
-                        </VStack>
+                                <Button
+                                    colorScheme={isDeleteMode ? 'red' : 'orange'}
+                                    variant={isDeleteMode ? 'solid' : 'outline'}
+                                    size="lg"
+                                    onClick={() => setIsDeleteMode(!isDeleteMode)}
+                                >
+                                    {isDeleteMode ? 'Exit Delete Mode' : 'Delete Mode'}
+                                </Button>
+
+                                <Button colorScheme="red" variant="outline" onClick={clearCanvas}>
+                                    Clear Canvas
+                                </Button>
+                            </Stack>
+                        </Stack>
                     </Container>
                 </Box>
             </main>
