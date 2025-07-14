@@ -1,7 +1,7 @@
 'use client';
 
 import { Button, VStack, Text, Box, Container, HStack, Stack } from '@chakra-ui/react';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 
 import Header from '../layout/Header';
 import Footer from '../layout/Footer';
@@ -35,7 +35,7 @@ export default function Home() {
     const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F'];
 
     // Function to redraw all squares
-    const redrawCanvas = () => {
+    const redrawCanvas = useCallback(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
 
@@ -55,7 +55,7 @@ export default function Home() {
             ctx.lineWidth = 2;
             ctx.strokeRect(square.x, square.y, square.width, square.height);
         });
-    };
+    }, [squares]);
 
     // Function to find which square is at given coordinates
     const findSquareAt = (x: number, y: number): Square | null => {
@@ -69,16 +69,27 @@ export default function Home() {
         return null;
     };
 
-    // Function to get mouse position relative to canvas
-    const getMousePos = (canvas: HTMLCanvasElement, e: MouseEvent): { x: number; y: number } => {
+    // Function to get position relative to canvas (works for both mouse and touch)
+    const getCanvasPos = (canvas: HTMLCanvasElement, clientX: number, clientY: number): { x: number; y: number } => {
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
 
         return {
-            x: (e.clientX - rect.left) * scaleX,
-            y: (e.clientY - rect.top) * scaleY,
+            x: (clientX - rect.left) * scaleX,
+            y: (clientY - rect.top) * scaleY,
         };
+    };
+
+    // Function to get mouse position relative to canvas
+    const getMousePos = (canvas: HTMLCanvasElement, e: MouseEvent): { x: number; y: number } => {
+        return getCanvasPos(canvas, e.clientX, e.clientY);
+    };
+
+    // Function to get touch position relative to canvas
+    const getTouchPos = (canvas: HTMLCanvasElement, e: TouchEvent): { x: number; y: number } => {
+        const touch = e.touches[0] || e.changedTouches[0];
+        return getCanvasPos(canvas, touch.clientX, touch.clientY);
     };
 
     // Mouse event handlers
@@ -151,6 +162,66 @@ export default function Home() {
         }
     };
 
+    // Touch event handlers
+    const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+        e.preventDefault(); // Prevent scrolling
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const touchPos = getTouchPos(canvas, e.nativeEvent);
+        const clickedSquare = findSquareAt(touchPos.x, touchPos.y);
+
+        if (clickedSquare) {
+            if (isDeleteMode) {
+                // Delete the clicked square
+                deleteSquare(clickedSquare.id);
+                return;
+            }
+
+            setDragState({
+                isDragging: true,
+                squareId: clickedSquare.id,
+                offsetX: touchPos.x - clickedSquare.x,
+                offsetY: touchPos.y - clickedSquare.y,
+            });
+        }
+    };
+
+    const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+        e.preventDefault(); // Prevent scrolling
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const touchPos = getTouchPos(canvas, e.nativeEvent);
+
+        if (dragState.isDragging && dragState.squareId && !isDeleteMode) {
+            // Update the position of the dragged square
+            setSquares((prevSquares) =>
+                prevSquares.map((square) =>
+                    square.id === dragState.squareId
+                        ? {
+                              ...square,
+                              x: Math.max(0, Math.min(canvas.width - square.width, touchPos.x - dragState.offsetX)),
+                              y: Math.max(0, Math.min(canvas.height - square.height, touchPos.y - dragState.offsetY)),
+                          }
+                        : square
+                )
+            );
+        }
+    };
+
+    const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+        e.preventDefault(); // Prevent scrolling
+        if (dragState.isDragging) {
+            setDragState({
+                isDragging: false,
+                squareId: null,
+                offsetX: 0,
+                offsetY: 0,
+            });
+        }
+    };
+
     // Function to add a new square
     const addSquare = () => {
         const canvas = canvasRef.current;
@@ -181,7 +252,7 @@ export default function Home() {
     // Effect to redraw canvas whenever squares change
     useEffect(() => {
         redrawCanvas();
-    }, [squares]);
+    }, [squares, redrawCanvas]);
 
     return (
         <div style={{ fontFamily: 'var(--font-geist-sans)' }}>
@@ -207,6 +278,9 @@ export default function Home() {
                                 onMouseMove={handleMouseMove}
                                 onMouseUp={handleMouseUp}
                                 onMouseLeave={handleMouseUp}
+                                onTouchStart={handleTouchStart}
+                                onTouchMove={handleTouchMove}
+                                onTouchEnd={handleTouchEnd}
                                 style={{
                                     border: '2px solid #CBD5E0',
                                     borderRadius: '8px',
@@ -214,6 +288,7 @@ export default function Home() {
                                     maxWidth: '100%',
                                     height: 'auto',
                                     cursor: 'default',
+                                    touchAction: 'none', // Prevent default touch behaviors
                                 }}
                                 width={800}
                                 height={600}
