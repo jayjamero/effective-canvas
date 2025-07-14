@@ -1,0 +1,21 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100vh;
+  font-family: var(--font-geist-sans);
+  background: url('/ricky-morty-bg.jpg') no-repeat center center fixed;
+  background-size: cover;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  flex-grow: 1;
+}
