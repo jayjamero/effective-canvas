@@ -1,11 +1,172 @@
 'use client';
 
-import { Button, HStack, VStack, Text, Box, Container, Flex } from '@chakra-ui/react';
+import { Button, VStack, Text, Box, Container } from '@chakra-ui/react';
+import { useState, useRef, useEffect } from 'react';
 
 import Header from '../layout/Header';
 import Footer from '../layout/Footer';
 
+interface Square {
+    id: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    color: string;
+}
+
 export default function Home() {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const [squares, setSquares] = useState<Square[]>([]);
+    const [dragState, setDragState] = useState<{
+        isDragging: boolean;
+        squareId: string | null;
+        offsetX: number;
+        offsetY: number;
+    }>({
+        isDragging: false,
+        squareId: null,
+        offsetX: 0,
+        offsetY: 0,
+    });
+
+    // Colors array
+    const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F'];
+
+    // Function to redraw all squares
+    const redrawCanvas = () => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw all squares
+        squares.forEach((square) => {
+            ctx.fillStyle = square.color;
+            ctx.fillRect(square.x, square.y, square.width, square.height);
+
+            // Add border
+            ctx.strokeStyle = '#2D3748';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(square.x, square.y, square.width, square.height);
+        });
+    };
+
+    // Function to find which square is at given coordinates
+    const findSquareAt = (x: number, y: number): Square | null => {
+        // Check from last to first (top to bottom)
+        for (let i = squares.length - 1; i >= 0; i--) {
+            const square = squares[i];
+            if (x >= square.x && x <= square.x + square.width && y >= square.y && y <= square.y + square.height) {
+                return square;
+            }
+        }
+        return null;
+    };
+
+    // Function to get mouse position relative to canvas
+    const getMousePos = (canvas: HTMLCanvasElement, e: MouseEvent): { x: number; y: number } => {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+
+        return {
+            x: (e.clientX - rect.left) * scaleX,
+            y: (e.clientY - rect.top) * scaleY,
+        };
+    };
+
+    // Mouse event handlers
+    const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const mousePos = getMousePos(canvas, e.nativeEvent);
+        const clickedSquare = findSquareAt(mousePos.x, mousePos.y);
+
+        if (clickedSquare) {
+            setDragState({
+                isDragging: true,
+                squareId: clickedSquare.id,
+                offsetX: mousePos.x - clickedSquare.x,
+                offsetY: mousePos.y - clickedSquare.y,
+            });
+            canvas.style.cursor = 'grabbing';
+        }
+    };
+
+    const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const mousePos = getMousePos(canvas, e.nativeEvent);
+
+        if (dragState.isDragging && dragState.squareId) {
+            // Update the position of the dragged square
+            setSquares((prevSquares) =>
+                prevSquares.map((square) =>
+                    square.id === dragState.squareId
+                        ? {
+                              ...square,
+                              x: Math.max(0, Math.min(canvas.width - square.width, mousePos.x - dragState.offsetX)),
+                              y: Math.max(0, Math.min(canvas.height - square.height, mousePos.y - dragState.offsetY)),
+                          }
+                        : square
+                )
+            );
+        } else {
+            // Change cursor based on whether mouse is over a square
+            const hoveredSquare = findSquareAt(mousePos.x, mousePos.y);
+            canvas.style.cursor = hoveredSquare ? 'grab' : 'default';
+        }
+    };
+
+    const handleMouseUp = () => {
+        if (dragState.isDragging) {
+            setDragState({
+                isDragging: false,
+                squareId: null,
+                offsetX: 0,
+                offsetY: 0,
+            });
+            const canvas = canvasRef.current;
+            if (canvas) {
+                canvas.style.cursor = 'default';
+            }
+        }
+    };
+
+    // Function to add a new square
+    const addSquare = () => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const newSquare: Square = {
+            id: Date.now().toString(),
+            x: Math.random() * (canvas.width - 100),
+            y: Math.random() * (canvas.height - 100),
+            width: 100,
+            height: 100,
+            color: colors[Math.floor(Math.random() * colors.length)],
+        };
+
+        setSquares((prevSquares) => [...prevSquares, newSquare]);
+    };
+
+    // Function to clear all squares
+    const clearCanvas = () => {
+        setSquares([]);
+    };
+
+    // Effect to redraw canvas whenever squares change
+    useEffect(() => {
+        redrawCanvas();
+    }, [squares]);
+
     return (
         <div style={{ fontFamily: 'var(--font-geist-sans)' }}>
             <Header />
@@ -20,84 +181,32 @@ export default function Home() {
                     <Container maxW="8xl">
                         <VStack spacing={6} align="center">
                             <Text fontSize="2xl" fontWeight="bold" textAlign="center">
-                                Canvas Drawing
+                                Canvas Drawing - Drag the squares around!
                             </Text>
 
                             <canvas
-                                ref={(canvas) => {
-                                    if (canvas) {
-                                        // Set canvas size
-                                        canvas.width = 800;
-                                        canvas.height = 600;
-
-                                        // Store canvas reference for drawing functions
-                                        (window as any).drawingCanvas = canvas;
-                                    }
-                                }}
+                                ref={canvasRef}
+                                onMouseDown={handleMouseDown}
+                                onMouseMove={handleMouseMove}
+                                onMouseUp={handleMouseUp}
+                                onMouseLeave={handleMouseUp}
                                 style={{
                                     border: '2px solid #CBD5E0',
                                     borderRadius: '8px',
                                     backgroundColor: 'white',
                                     maxWidth: '100%',
                                     height: 'auto',
+                                    cursor: 'default',
                                 }}
                                 width={800}
                                 height={600}
                             />
 
-                            <Button
-                                colorScheme="blue"
-                                size="lg"
-                                onClick={() => {
-                                    const canvas = (window as any).drawingCanvas;
-                                    if (canvas) {
-                                        const ctx = canvas.getContext('2d');
-                                        if (ctx) {
-                                            // Generate random position for the square
-                                            const x = Math.random() * (canvas.width - 100);
-                                            const y = Math.random() * (canvas.height - 100);
-
-                                            // Generate random color
-                                            const colors = [
-                                                '#FF6B6B',
-                                                '#4ECDC4',
-                                                '#45B7D1',
-                                                '#96CEB4',
-                                                '#FFEAA7',
-                                                '#DDA0DD',
-                                                '#98D8C8',
-                                                '#F7DC6F',
-                                            ];
-                                            const color = colors[Math.floor(Math.random() * colors.length)];
-
-                                            // Draw square
-                                            ctx.fillStyle = color;
-                                            ctx.fillRect(x, y, 100, 100);
-
-                                            // Add border
-                                            ctx.strokeStyle = '#2D3748';
-                                            ctx.lineWidth = 2;
-                                            ctx.strokeRect(x, y, 100, 100);
-                                        }
-                                    }
-                                }}
-                            >
+                            <Button colorScheme="blue" size="lg" onClick={addSquare}>
                                 Draw Square
                             </Button>
 
-                            <Button
-                                colorScheme="red"
-                                variant="outline"
-                                onClick={() => {
-                                    const canvas = (window as any).drawingCanvas;
-                                    if (canvas) {
-                                        const ctx = canvas.getContext('2d');
-                                        if (ctx) {
-                                            ctx.clearRect(0, 0, canvas.width, canvas.height);
-                                        }
-                                    }
-                                }}
-                            >
+                            <Button colorScheme="red" variant="outline" onClick={clearCanvas}>
                                 Clear Canvas
                             </Button>
                         </VStack>

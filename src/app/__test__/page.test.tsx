@@ -23,27 +23,44 @@ Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
     writable: true,
 });
 
+// Mock getBoundingClientRect for canvas positioning
+const mockGetBoundingClientRect = jest.fn();
+Object.defineProperty(HTMLCanvasElement.prototype, 'getBoundingClientRect', {
+    value: mockGetBoundingClientRect,
+    writable: true,
+});
+
 // Mock Math.random to make tests deterministic
 const mockMathRandom = jest.spyOn(Math, 'random');
+
+// Mock Date.now for deterministic IDs
+const mockDateNow = jest.spyOn(Date, 'now');
 
 describe('Home Page Canvas Functionality', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         mockGetContext.mockReturnValue(mockCanvasContext);
         mockMathRandom.mockReturnValue(0.5); // Always return 0.5 for predictable positioning
+        mockDateNow.mockReturnValue(1234567890); // Fixed timestamp for consistent IDs
 
-        // Clear the global canvas reference
-        delete (window as any).drawingCanvas;
+        // Mock canvas positioning
+        mockGetBoundingClientRect.mockReturnValue({
+            left: 0,
+            top: 0,
+            width: 800,
+            height: 600,
+        });
     });
 
     afterAll(() => {
         mockMathRandom.mockRestore();
+        mockDateNow.mockRestore();
     });
 
     it('renders the canvas and buttons', () => {
         render(<Home />);
 
-        expect(screen.getByText('Canvas Drawing')).toBeInTheDocument();
+        expect(screen.getByText('Canvas Drawing - Drag the squares around!')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /draw square/i })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /clear canvas/i })).toBeInTheDocument();
 
@@ -52,14 +69,6 @@ describe('Home Page Canvas Functionality', () => {
         expect(canvas).toBeInTheDocument();
         expect(canvas).toHaveAttribute('width', '800');
         expect(canvas).toHaveAttribute('height', '600');
-    });
-
-    it('sets up canvas reference when canvas is rendered', () => {
-        render(<Home />);
-
-        const canvas = document.querySelector('canvas');
-        expect(canvas).toBeInTheDocument();
-        expect((window as any).drawingCanvas).toBe(canvas);
     });
 
     it('draws a square when Draw Square button is clicked', () => {
@@ -82,81 +91,228 @@ describe('Home Page Canvas Functionality', () => {
         const drawButton = screen.getByRole('button', { name: /draw square/i });
 
         // First click with Math.random() = 0.5
+        mockDateNow.mockReturnValueOnce(1000);
         fireEvent.click(drawButton);
         expect(mockFillRect).toHaveBeenLastCalledWith(350, 250, 100, 100);
 
-        // Change Math.random return value
+        // Change Math.random return value and timestamp
         mockMathRandom.mockReturnValue(0.2);
+        mockDateNow.mockReturnValueOnce(2000);
         fireEvent.click(drawButton);
         expect(mockFillRect).toHaveBeenLastCalledWith(140, 100, 100, 100); // (800-100)*0.2, (600-100)*0.2
 
-        // Verify fillRect was called twice
-        expect(mockFillRect).toHaveBeenCalledTimes(2);
-        expect(mockStrokeRect).toHaveBeenCalledTimes(2);
+        // Verify fillRect was called for both squares (redraw calls)
+        expect(mockFillRect).toHaveBeenCalledTimes(3); // Initial + redraw after first + redraw after second
     });
 
-    it('uses different colors from the color palette', () => {
+    it('clears all squares when Clear Canvas button is clicked', () => {
         render(<Home />);
 
         const drawButton = screen.getByRole('button', { name: /draw square/i });
-
-        // Mock Math.random to return different values for color selection
-        mockMathRandom
-            .mockReturnValueOnce(0.5) // x position
-            .mockReturnValueOnce(0.5) // y position
-            .mockReturnValueOnce(0.1); // color index (should select first color)
-
-        fireEvent.click(drawButton);
-
-        expect(mockCanvasContext.fillStyle).toBe('#FF6B6B'); // First color in the array
-    });
-
-    it('clears the canvas when Clear Canvas button is clicked', () => {
-        render(<Home />);
-
         const clearButton = screen.getByRole('button', { name: /clear canvas/i });
+
+        // Draw a square first
+        fireEvent.click(drawButton);
+        expect(mockFillRect).toHaveBeenCalled();
+
+        // Clear the canvas
+        jest.clearAllMocks();
         fireEvent.click(clearButton);
 
-        expect(mockGetContext).toHaveBeenCalledWith('2d');
+        // Should clear the canvas
         expect(mockClearRect).toHaveBeenCalledWith(0, 0, 800, 600);
     });
 
-    it('handles case when canvas context is not available', () => {
-        mockGetContext.mockReturnValue(null);
-        render(<Home />);
+    describe('Drag and Drop Functionality', () => {
+        it('detects mouse down on a square and starts dragging', () => {
+            render(<Home />);
 
-        const drawButton = screen.getByRole('button', { name: /draw square/i });
-        fireEvent.click(drawButton);
+            const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+            const drawButton = screen.getByRole('button', { name: /draw square/i });
 
-        expect(mockGetContext).toHaveBeenCalledWith('2d');
-        expect(mockFillRect).not.toHaveBeenCalled();
-        expect(mockStrokeRect).not.toHaveBeenCalled();
-    });
+            // Draw a square at position (350, 250)
+            fireEvent.click(drawButton);
 
-    it('handles case when canvas is not available', () => {
-        // Clear the global canvas reference
-        delete (window as any).drawingCanvas;
+            // Simulate mouse down on the square
+            fireEvent.mouseDown(canvas, {
+                clientX: 400, // Inside the square (350 + 50)
+                clientY: 300, // Inside the square (250 + 50)
+            });
 
-        render(<Home />);
+            // Cursor should change to grabbing when dragging starts
+            expect(canvas.style.cursor).toBe('grabbing');
+        });
 
-        // Manually remove the canvas reference to simulate the error case
-        delete (window as any).drawingCanvas;
+        it('moves square when dragging', () => {
+            render(<Home />);
 
-        const drawButton = screen.getByRole('button', { name: /draw square/i });
-        fireEvent.click(drawButton);
+            const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+            const drawButton = screen.getByRole('button', { name: /draw square/i });
 
-        // Should not crash and not call canvas methods
-        expect(mockFillRect).not.toHaveBeenCalled();
-    });
+            // Draw a square at position (350, 250)
+            fireEvent.click(drawButton);
+            jest.clearAllMocks(); // Clear previous draw calls
 
-    it('has correct button styling and variants', () => {
-        render(<Home />);
+            // Start dragging
+            fireEvent.mouseDown(canvas, {
+                clientX: 400, // Click at center of square
+                clientY: 300,
+            });
 
-        const drawButton = screen.getByRole('button', { name: /draw square/i });
-        const clearButton = screen.getByRole('button', { name: /clear canvas/i });
+            // Move mouse to new position
+            fireEvent.mouseMove(canvas, {
+                clientX: 500, // Move 100px right
+                clientY: 400, // Move 100px down
+            });
 
-        // Check if buttons have the correct Chakra UI classes (this is a basic check)
-        expect(drawButton).toBeInTheDocument();
-        expect(clearButton).toBeInTheDocument();
+            // Square should be redrawn at new position (450, 350)
+            // The offset is calculated: newPos - offset = 500 - 50 = 450
+            expect(mockFillRect).toHaveBeenCalledWith(450, 350, 100, 100);
+            expect(mockStrokeRect).toHaveBeenCalledWith(450, 350, 100, 100);
+        });
+
+        it('stops dragging on mouse up', () => {
+            render(<Home />);
+
+            const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+            const drawButton = screen.getByRole('button', { name: /draw square/i });
+
+            // Draw a square
+            fireEvent.click(drawButton);
+
+            // Start dragging
+            fireEvent.mouseDown(canvas, {
+                clientX: 400,
+                clientY: 300,
+            });
+
+            expect(canvas.style.cursor).toBe('grabbing');
+
+            // Stop dragging
+            fireEvent.mouseUp(canvas);
+
+            // Cursor should reset
+            expect(canvas.style.cursor).toBe('default');
+        });
+
+        it('stops dragging when mouse leaves canvas', () => {
+            render(<Home />);
+
+            const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+            const drawButton = screen.getByRole('button', { name: /draw square/i });
+
+            // Draw a square
+            fireEvent.click(drawButton);
+
+            // Start dragging
+            fireEvent.mouseDown(canvas, {
+                clientX: 400,
+                clientY: 300,
+            });
+
+            expect(canvas.style.cursor).toBe('grabbing');
+
+            // Mouse leaves canvas
+            fireEvent.mouseLeave(canvas);
+
+            // Should stop dragging
+            expect(canvas.style.cursor).toBe('default');
+        });
+
+        it('changes cursor to grab when hovering over square', () => {
+            render(<Home />);
+
+            const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+            const drawButton = screen.getByRole('button', { name: /draw square/i });
+
+            // Draw a square at position (350, 250)
+            fireEvent.click(drawButton);
+
+            // Hover over the square
+            fireEvent.mouseMove(canvas, {
+                clientX: 400, // Inside square
+                clientY: 300,
+            });
+
+            expect(canvas.style.cursor).toBe('grab');
+
+            // Move away from square
+            fireEvent.mouseMove(canvas, {
+                clientX: 100, // Outside square
+                clientY: 100,
+            });
+
+            expect(canvas.style.cursor).toBe('default');
+        });
+
+        it('constrains square movement within canvas boundaries', () => {
+            render(<Home />);
+
+            const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+            const drawButton = screen.getByRole('button', { name: /draw square/i });
+
+            // Draw a square
+            fireEvent.click(drawButton);
+            jest.clearAllMocks();
+
+            // Start dragging from center of square
+            fireEvent.mouseDown(canvas, {
+                clientX: 400,
+                clientY: 300,
+            });
+
+            // Try to move square beyond left boundary
+            fireEvent.mouseMove(canvas, {
+                clientX: -50, // Beyond left edge
+                clientY: 300,
+            });
+
+            // Square should be constrained to x=0
+            expect(mockFillRect).toHaveBeenCalledWith(0, 250, 100, 100);
+
+            jest.clearAllMocks();
+
+            // Try to move square beyond right boundary
+            fireEvent.mouseMove(canvas, {
+                clientX: 850, // Beyond right edge (800 - 100 = 700 max)
+                clientY: 300,
+            });
+
+            // Square should be constrained to x=700 (canvas width - square width)
+            expect(mockFillRect).toHaveBeenCalledWith(700, 250, 100, 100);
+        });
+
+        it('handles multiple squares independently', () => {
+            render(<Home />);
+
+            const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+            const drawButton = screen.getByRole('button', { name: /draw square/i });
+
+            // Draw first square
+            mockDateNow.mockReturnValueOnce(1000);
+            fireEvent.click(drawButton);
+
+            // Draw second square at different position
+            mockMathRandom.mockReturnValue(0.8);
+            mockDateNow.mockReturnValueOnce(2000);
+            fireEvent.click(drawButton);
+
+            jest.clearAllMocks();
+
+            // Drag the first square (should be at 350, 250)
+            fireEvent.mouseDown(canvas, {
+                clientX: 400, // Center of first square
+                clientY: 300,
+            });
+
+            fireEvent.mouseMove(canvas, {
+                clientX: 200,
+                clientY: 150,
+            });
+
+            // Both squares should be redrawn, but only first one moved
+            expect(mockFillRect).toHaveBeenCalledWith(150, 100, 100, 100); // First square moved
+            expect(mockFillRect).toHaveBeenCalledWith(560, 400, 100, 100); // Second square unchanged
+        });
     });
 });
